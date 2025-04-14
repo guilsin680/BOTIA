@@ -1,40 +1,65 @@
-import pandas as pd
-import requests
 import joblib
-import os
-from dotenv import load_dotenv
-from datetime import datetime
+import pandas as pd
 from telegram import Bot
+import os
 
-load_dotenv()
-
+# Definindo variáveis de ambiente (substitua pelos valores corretos)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-bot = Bot(token=TOKEN)
 
-# Função de previsão usando modelo treinado
+# Carregar o modelo treinado
+model = joblib.load("model.pkl")
+
+# Função de previsão de resultado
 def prever_resultado(jogo):
-    modelo = joblib.load("model.pkl")
-    features = jogo  # Ex: [gols_mandante, gols_visitante]
-    resultado = modelo.predict([features])[0]
-    probas = modelo.predict_proba([features])[0]
-    confianca = round(max(probas) * 100, 2)
-    return resultado, confianca
+    # O modelo espera as seguintes variáveis de entrada:
+    # 'home_goals', 'away_goals', 'home_team_rank', 'away_team_rank'
+    dados_jogo = pd.DataFrame([jogo])
+    
+    # Fazer a previsão
+    resultado = model.predict(dados_jogo)
+    confianca = model.predict_proba(dados_jogo).max()  # probabilidade máxima para confiança
+    
+    return resultado[0], confianca
 
-# Exemplo de uso com jogo genérico (substituir por dados reais da API)
-jogo_exemplo = [1, 0]
+# Função para enviar a previsão via Telegram
+def enviar_previsao(resultado, confianca, jogo):
+    bot = Bot(token=TOKEN)
+    
+    # Formatar a mensagem
+    if resultado == 0:
+        resultado_str = "Vitória do time da casa"
+    elif resultado == 1:
+        resultado_str = "Empate"
+    else:
+        resultado_str = "Vitória do time visitante"
+    
+    mensagem = (
+        f"Previsão do Jogo:\n"
+        f"Data e Hora: {jogo['date']}\n"
+        f"Times: {jogo['home_team']} vs {jogo['away_team']}\n"
+        f"Competição: {jogo['league']}\n"
+        f"Resultado esperado: {resultado_str}\n"
+        f"Confiança na previsão: {confianca:.2f}\n"
+    )
+    
+    # Enviar a mensagem
+    bot.send_message(chat_id=CHAT_ID, text=mensagem)
+
+# Exemplo de jogo (substitua com dados reais)
+jogo_exemplo = {
+    "home_goals": 2,
+    "away_goals": 1,
+    "home_team_rank": 5,
+    "away_team_rank": 8,
+    "date": "2025-04-14 16:00",
+    "home_team": "Time A",
+    "away_team": "Time B",
+    "league": "Campeonato Nacional"
+}
+
+# Fazer a previsão
 resultado, confianca = prever_resultado(jogo_exemplo)
 
-mensagem = f"""
-📊 *Previsão de Resultado com IA*
-
-🏟️ *Jogo:* Time A vs Time B
-📅 *Data:* {datetime.now().strftime('%d/%m/%Y')}
-⏰ *Horário:* {datetime.now().strftime('%H:%M')}
-🔍 *Previsão:* *{resultado.upper()}*
-📈 *Confiança:* {confianca}%
-
-🤖 _Bot de Apostas com IA_
-"""
-
-bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
+# Enviar a previsão para o Telegram
+enviar_previsao(resultado, confianca, jogo_exemplo)
